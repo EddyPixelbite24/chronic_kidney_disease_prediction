@@ -1,0 +1,114 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
+import warnings
+warnings.filterwarnings('ignore')
+
+plt.style.use('fivethirtyeight')
+%matplotlib inline
+pd.set_option('display.max_columns', 26)
+df= pd.read_csv('kidney_disease.csv')
+df.drop('id', axis = 1, inplace = True)
+df.columns = ['age', 'blood_pressure', 'specific_gravity', 'albumin', 'sugar', 'red_blood_cells', 'pus_cell',
+              'pus_cell_clumps', 'bacteria', 'blood_glucose_random', 'blood_urea', 'serum_creatinine', 'sodium',
+              'potassium', 'haemoglobin', 'packed_cell_volume', 'white_blood_cell_count', 'red_blood_cell_count',
+              'hypertension', 'diabetes_mellitus', 'coronary_artery_disease', 'appetite', 'pedal_edema',
+              'anaemia', 'class']
+selected_columns = ['age', 'blood_pressure', 'hypertension', 'diabetes_mellitus', 'coronary_artery_disease', 'appetite', 'pedal_edema',
+              'anaemia', 'class']
+df_subset = df[selected_columns]
+df_subset.head()
+
+categorical_cols = ['hypertension', 'diabetes_mellitus', 'coronary_artery_disease', 
+                   'appetite', 'pedal_edema', 'anaemia', 'class']
+df_subset[categorical_cols] = df_subset[categorical_cols].fillna(df_subset[categorical_cols].mode().iloc[0])
+from sklearn.preprocessing import LabelEncoder
+le = LabelEncoder()
+for col in categorical_cols:
+    df_subset[col] = le.fit_transform(df_subset[col])
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
+X = df_subset.drop('class', axis=1).values
+y = df_subset['class'].values
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+model = RandomForestClassifier(random_state=42)
+model.fit(X_train, y_train) 
+
+importance_vals = model.feature_importances_
+indices = np.argsort(importance_vals)[::-1]
+plt.figure()
+plt.title("Random Forest impurity-based feature importance")
+plt.bar(range(X_train.shape[1]), importance_vals[indices])
+
+plt.xticks(range(X_train.shape[1]), df_subset.drop('class', axis=1).columns[indices], rotation=90) 
+plt.xlim([-1, X_train.shape[1]])
+plt.ylim([0, max(importance_vals)*1.1])
+
+plt.tight_layout()
+plt.savefig('1.pdf')
+plt.show()
+
+from mlxtend.evaluate import feature_importance_permutation
+imp_vals, imp_all = feature_importance_permutation(predict_method=model.predict, X=X_test, y=y_test, metric='accuracy', num_rounds=50, seed=0)
+std = np.std(imp_all, axis=1)
+indices = np.argsort(imp_vals)[::-1]
+plt.figure()
+plt.title("Random Forest feature importance via permutation importance")
+plt.bar(range(X_train.shape[1]), imp_vals[indices], yerr=std[indices])
+
+plt.xticks(range(X_train.shape[1]), df_subset.drop('class', axis=1).columns[indices], rotation=90) 
+plt.xlim([-1, X_train.shape[1]])
+plt.ylim([0, max(imp_vals)*1.1])
+
+plt.tight_layout()
+plt.savefig('2.pdf')
+plt.show()
+
+def adaptive_permutation_importance(model, X, y, initial_importance, metric='accuracy', n_repeats=50, aggression=0.35, seed=42):
+np.random.seed(seed)
+baseline_score = metric(y, model.predict(X))
+imp_all = []
+for i in range(n_repeats):
+        imp_round = np.zeros(X.shape[1])
+        for i in range(X.shape[1]):
+            X_permuted = X.copy()
+            # Adaptive: Permute fewer samples for important features
+            importance_weight = 1 - (initial_importance[i] / max(initial_importance))
+            n_samples = int(X.shape[0] * (aggression * importance_weight))
+            if n_samples > 0:
+                idx = np.random.choice(X.shape[0], n_samples, replace=False)
+                X_permuted[idx, i] = np.random.permutation(X_permuted[idx, i])
+            imp_round[i] = baseline_score - metric(y, model.predict(X_permuted))
+        imp_all.append(imp_round)
+imp_all = np.array(imp_all)
+return np.mean(imp_all, axis=0), np.std(imp_all, axis=0)
+
+def find_optimal_aggression(model, X, y, inital_importance, aggression range=np.arrange(0.05, 1.01, 0.05), n_repeats=50, seed=42):
+results={}
+for aggression in aggression range:
+std = adaptive_permutation_importance(model, X, y, initial_importance, n_repeats=n_repeats, aggression=aggression, seed=seed)
+results[aggression] = np.mean(std)
+best_aggression = min(results, key=results.get)
+
+best_agg = find_optimal_aggression(model, X_test, y_test, importance_vals)
+imp_vals_adaptive, std_adaptive = adaptive_permutation_importance(
+    model, X_test, y_test, metric='accuracy', n_repeats=50, aggression=best_agg)
+
+indices = np.argsort(imp_values_adaptive)[::1]
+plt.figure()
+plt.title("Adaptive Permutation Importance")
+plt.bar(range(X_train.shape[1]), imp_vals_adaptive[indices], yerr=std_adaptive[indices])
+
+plt.xticks(range(X_train.shape[1]), df_subset.drop('class', axis=1).columns[indices], rotation=90) 
+plt.xlim([-1, X_train.shape[1]])
+plt.ylim([0, max(imp_vals)*1.1])
+
+plt.tight_layout()
+plt.savefig('3.pdf')
+plt.show()
