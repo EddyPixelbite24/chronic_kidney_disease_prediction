@@ -1,0 +1,71 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
+import warnings
+warnings.filterwarnings('ignore')
+
+plt.style.use('fivethirtyeight')
+%matplotlib inline
+pd.set_option('display.max_columns', 26)
+df= pd.read_csv('kidney_disease.csv')
+df.drop('id', axis = 1, inplace = True)
+df.columns = ['age', 'blood_pressure', 'specific_gravity', 'albumin', 'sugar', 'red_blood_cells', 'pus_cell',
+              'pus_cell_clumps', 'bacteria', 'blood_glucose_random', 'blood_urea', 'serum_creatinine', 'sodium',
+              'potassium', 'haemoglobin', 'packed_cell_volume', 'white_blood_cell_count', 'red_blood_cell_count',
+              'hypertension', 'diabetes_mellitus', 'coronary_artery_disease', 'appetite', 'pedal_edema',
+              'anaemia', 'class']
+selected_columns = ['age', 'blood_pressure', 'hypertension', 'diabetes_mellitus', 'coronary_artery_disease', 'appetite', 'pedal_edema',
+              'anaemia', 'class']
+df_subset = df[selected_columns]
+df_subset.head()
+
+categorical_cols = ['hypertension', 'diabetes_mellitus', 'coronary_artery_disease', 
+                   'appetite', 'pedal_edema', 'anaemia', 'class']
+df_subset[categorical_cols] = df_subset[categorical_cols].fillna(df_subset[categorical_cols].mode().iloc[0])
+from sklearn.preprocessing import LabelEncoder
+le = LabelEncoder()
+for col in categorical_cols:
+    df_subset[col] = le.fit_transform(df_subset[col])
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
+X = df_subset.drop('class', axis=1).values
+y = df_subset['class'].values
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+model = RandomForestClassifier(random_state=42)
+model.fit(X_train, y_train) 
+
+importance_vals = model.feature_importances_
+indices = np.argsort(importance_vals)[::-1]
+plt.figure()
+plt.title("Random Forest impurity-based feature importance")
+plt.bar(range(X_train.shape[1]), importance_vals[indices])
+
+plt.xticks(range(X_train.shape[1]), df_subset.drop('class', axis=1).columns[indices], rotation=90) 
+plt.xlim([-1, X_train.shape[1]])
+plt.ylim([0, max(importance_vals)*1.1])
+
+plt.tight_layout()
+plt.savefig('1.pdf')
+plt.show()
+
+from mlxtend.evaluate import feature_importance_permutation
+imp_vals, imp_all = feature_importance_permutation(predict_method=model.predict, X=X_test, y=y_test, metric='accuracy', num_rounds=50, seed=0)
+std = np.std(imp_all, axis=1)
+indices = np.argsort(imp_vals)[::-1]
+plt.figure()
+plt.title("Random Forest feature importance via permutation importance")
+plt.bar(range(X_train.shape[1]), imp_vals[indices], yerr=std[indices])
+
+plt.xticks(range(X_train.shape[1]), df_subset.drop('class', axis=1).columns[indices], rotation=90) 
+plt.xlim([-1, X_train.shape[1]])
+plt.ylim([0, max(imp_vals)*1.1])
+
+plt.tight_layout()
+plt.savefig('2.pdf')
+plt.show()
